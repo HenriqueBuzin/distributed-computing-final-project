@@ -37,6 +37,9 @@ def remove_all_nodes():
     clocks.clear()  # Remove todos os vetores de relógio
     return jsonify({'message': 'All nodes removed'}), 200
 
+def lamport_sort(message):
+    return (message['clock'], message['sender'])
+
 @app.route('/send-message', methods=['POST'])
 def send_message():
     recipient = request.form.get('recipient')
@@ -70,11 +73,16 @@ def send_message():
         recipient_clock = max(recipient_clock, sender_clock)
         clocks[recipient_id] = recipient_clock
 
+    # Ordena as mensagens utilizando o algoritmo de Lamport
+    messages.sort(key=lamport_sort)
+
     return jsonify(messages), 200
 
 @app.route('/get-messages/<int:node_id>', methods=['GET'])
 def get_messages(node_id):
+    # Ordena as mensagens utilizando o algoritmo de Lamport antes de retornar as mensagens do nó
     node_messages = [message for message in messages if message['recipient'] == node_id]
+    node_messages.sort(key=lamport_sort)
     return jsonify(node_messages), 200
 
 if __name__ == '__main__':
