@@ -1,16 +1,18 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Aplicativo Flask</title>
-    <script src="https://code.jquery.com/jquery-3.6.4.min.js" integrity="sha256-oP6HI9z1XaZNBrJURtCoUT5SUnxFr8s3BzRl+cbzUq8=" crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"
+        integrity="sha256-oP6HI9z1XaZNBrJURtCoUT5SUnxFr8s3BzRl+cbzUq8=" crossorigin="anonymous"></script>
     <script type="text/javascript">
-        $(document).ready(function() {
+        $(document).ready(function () {
             function createContainer() {
                 $.ajax({
                     url: '/create-container',
                     type: 'GET',
                     dataType: 'json',
-                    success: function(data) {
+                    success: function (data) {
                         if (data.error) {
                             console.log('Erro ao criar o contêiner Docker Python: ' + data.message);
                         } else {
@@ -21,7 +23,7 @@
                             getOriginList(); // Atualizar a lista de nós de origem
                         }
                     },
-                    error: function(error) {
+                    error: function (error) {
                         console.log(error);
                     }
                 });
@@ -30,7 +32,7 @@
             function updateNodeList(nodes, selectElement) {
                 selectElement.empty();
 
-                $.each(nodes, function(index, node) {
+                $.each(nodes, function (index, node) {
                     var option = $('<option>').text(node);
                     selectElement.append(option);
                 });
@@ -41,11 +43,11 @@
                     url: '/get-nodes',
                     type: 'GET',
                     dataType: 'json',
-                    success: function(data) {
+                    success: function (data) {
                         updateNodeList(data.concat(['Broadcast']), $('#recipient'));
                         updateNodeList(data, $('#origin'));
                     },
-                    error: function(error) {
+                    error: function (error) {
                         console.log('Erro ao obter a lista de nós:', error);
                     }
                 });
@@ -56,24 +58,67 @@
                     url: '/get-nodes',
                     type: 'GET',
                     dataType: 'json',
-                    success: function(data) {
+                    success: function (data) {
                         updateNodeList(data, $('#origin'));
                     },
-                    error: function(error) {
+                    error: function (error) {
                         console.log('Erro ao obter a lista de nós de origem:', error);
                     }
                 });
             }
 
-            $('#createContainerBtn').click(function() {
+            $('#createContainerBtn').click(function () {
                 createContainer();
             });
 
             // Obter a lista de nós quando a página carregar
             getNodeList();
+
+            $('#sendMessageBtn').click(function () {
+                var origin = $('#origin').val();
+                var recipient = $('#recipient').val();
+                var message = $('#message').val();
+                var timestamp = Date.now();  // Obter o carimbo de data/hora atual
+
+                $.ajax({
+                    url: '/send-message',
+                    type: 'POST',
+                    dataType: 'json',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        origin: origin,
+                        recipient: recipient,
+                        message: message,
+                        timestamp: timestamp
+                    }),
+                    success: function (data) {
+                        if (data.success) {
+                            addSuccessMessage(origin, recipient, message);
+                        } else {
+                            addFailureMessage(origin, recipient, message);
+                        }
+                    },
+                    error: function (error) {
+                        console.log('Erro ao enviar a mensagem:', error);
+                    }
+                });
+            });
+
         });
+
+        function addSuccessMessage(origin, recipient, message) {
+            var listItem = $('<li>').text('Origem: ' + origin + ', Destinatário: ' + recipient + ', Mensagem: ' + message + ', Status: Concluído');
+            $('#successList').append(listItem);
+        }
+
+        function addFailureMessage(origin, recipient, message) {
+            var listItem = $('<li>').text('Origem: ' + origin + ', Destinatário: ' + recipient + ', Mensagem: ' + message + ', Status: Falha');
+            $('#failureList').append(listItem);
+        }
+
     </script>
 </head>
+
 <body>
     <h1>Aplicativo Flask</h1>
     <button id="createContainerBtn">Criar Container</button>
@@ -98,5 +143,16 @@
     <br>
 
     <button id="sendMessageBtn">Enviar</button>
+
+    <hr>
+
+    <h2>Status de Entrega:</h2>
+    <h3>Concluído:</h3>
+    <ul id="successList"></ul>
+
+    <h3>Falha:</h3>
+    <ul id="failureList"></ul>
+
 </body>
+
 </html>
