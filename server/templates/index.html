@@ -1,89 +1,102 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
-
+<html>
+<head>
+    <title>Aplicativo Flask</title>
     <script src="https://code.jquery.com/jquery-3.6.4.min.js" integrity="sha256-oP6HI9z1XaZNBrJURtCoUT5SUnxFr8s3BzRl+cbzUq8=" crossorigin="anonymous"></script>
-
-    <script>
+    <script type="text/javascript">
         $(document).ready(function() {
-            function createNode() {
+            function createContainer() {
                 $.ajax({
-                    url: '/node',
-                    type: 'POST',
-                    success: function(response) {
-                        console.log('Nó criado:', response);
-                        getNodes(); // Atualiza a lista de nós após criar um novo nó
-                    },
-                    error: function(error) {
-                        console.log('Erro ao criar nó:', error);
-                    }
-                });
-            }
-
-            function getNodes() {
-                $.ajax({
-                    url: '/graph',
+                    url: '/create-container',
                     type: 'GET',
-                    success: function(response) {
-                        console.log('Lista de nós:', response);
-                        // Atualize a interface do usuário com a lista de nós
-                        $('#node-list').empty();
-                        $('#recipient').empty(); // Limpa as opções antes de adicionar novamente
-                        $('#recipient').append($('<option>', {
-                            value: 'broadcast',
-                            text: 'Broadcast'
-                        }));
-                        response.forEach(function(node) {
-                            $('#node-list').append('<li>' + node.node_id + '</li>');
-                            $('#recipient').append($('<option>', {
-                                value: node.node_id,
-                                text: 'Nó ' + node.node_id
-                            }));
-                        });
+                    dataType: 'json',
+                    success: function(data) {
+                        if (data.error) {
+                            console.log('Erro ao criar o contêiner Docker Python: ' + data.message);
+                        } else {
+                            console.log('Contêiner Docker Python criado com sucesso! ID: ' + data.container_id);
+                            var containerItem = $('<li>').text(data.container_id);
+                            $('#containerList').append(containerItem);
+                            getNodeList(); // Atualizar a lista de nós
+                            getOriginList(); // Atualizar a lista de nós de origem
+                        }
                     },
                     error: function(error) {
-                        console.log('Erro ao obter nós:', error);
+                        console.log(error);
                     }
                 });
             }
 
-            $('#create-node-btn').click(function() {
-                createNode();
+            function updateNodeList(nodes, selectElement) {
+                selectElement.empty();
+
+                $.each(nodes, function(index, node) {
+                    var option = $('<option>').text(node);
+                    selectElement.append(option);
+                });
+            }
+
+            function getNodeList() {
+                $.ajax({
+                    url: '/get-nodes',
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function(data) {
+                        updateNodeList(data.concat(['Broadcast']), $('#recipient'));
+                        updateNodeList(data, $('#origin'));
+                    },
+                    error: function(error) {
+                        console.log('Erro ao obter a lista de nós:', error);
+                    }
+                });
+            }
+
+            function getOriginList() {
+                $.ajax({
+                    url: '/get-nodes',
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function(data) {
+                        updateNodeList(data, $('#origin'));
+                    },
+                    error: function(error) {
+                        console.log('Erro ao obter a lista de nós de origem:', error);
+                    }
+                });
+            }
+
+            $('#createContainerBtn').click(function() {
+                createContainer();
             });
 
-            getNodes(); // Obtém a lista de nós inicial quando a página é carregada
+            // Obter a lista de nós quando a página carregar
+            getNodeList();
         });
     </script>
+</head>
+<body>
+    <h1>Aplicativo Flask</h1>
+    <button id="createContainerBtn">Criar Container</button>
+    <hr>
+    <h2>Lista de Contêineres:</h2>
+    <ul id="containerList"></ul>
 
-    <title>Hello, world!</title>
+    <h2>Enviar Mensagem:</h2>
+    <label for="recipient">Destinatário:</label>
+    <select id="recipient"></select>
 
-  </head>
-  <body>
-    <div class="container">
-      <h1>Lista de Nós</h1>
-      <button id="create-node-btn">Criar Nó</button>
-      <ul id="node-list"></ul>
+    <br>
 
-      <form id="send-message-form">
-        <label for="recipient">Destinatário:</label>
-        <select id="recipient">
-            <option value="broadcast">Broadcast</option>
-            <!-- Opções de nós serão adicionadas dinamicamente -->
-        </select>
+    <label for="origin">Nó de Origem:</label>
+    <select id="origin"></select>
 
-        <br>
+    <br>
 
-        <label for="message">Mensagem:</label>
-        <input type="text" id="message" required>
+    <label for="message">Mensagem:</label>
+    <input type="text" id="message" required>
 
-        <br>
+    <br>
 
-        <button type="submit">Enviar</button>
-      </form>
-    </div>
-  </body>
+    <button id="sendMessageBtn">Enviar</button>
+</body>
 </html>

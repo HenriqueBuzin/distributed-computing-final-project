@@ -1,1 +1,5 @@
-Flask
+Flask==2.1.0
+Flask-SocketIO==5.1.1
+docker==5.0.0
+six==1.16.0
+urllib3==1.26.7
