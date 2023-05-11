@@ -9,6 +9,7 @@ app = Flask(__name__)
 client = docker.from_env()
 containers = {}
 next_sequence = 0  # Próximo número de sequência disponível
+base_port = 8000  # Porta base para o primeiro servidor de socket
 
 class Message:
     def __init__(self, timestamp, sequence, origin, destination, content, vector_clock):
@@ -21,6 +22,25 @@ class Message:
 
     def update_vector_clock(self, process_id):
         self.vector_clock[process_id] += 1
+
+def receive_message(ip_address, port):
+    # Lógica para receber e processar mensagens em um socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((ip_address, port))
+        s.listen()
+        while True:
+            conn, addr = s.accept()
+            with conn:
+                data = conn.recv(4096)
+                if data:
+                    try:
+                        serialized_message = data.decode()
+                        message = deserialize_message(json.loads(serialized_message))
+                        process_id = message.destination
+                        message.update_vector_clock(process_id)
+                        print(f"Mensagem recebida: {message.content}")
+                    except (json.JSONDecodeError, KeyError) as e:
+                        print(f"Erro ao processar a mensagem: {str(e)}")
 
 @app.route('/')
 def index():
@@ -37,8 +57,11 @@ def create_container():
         # Obter o endereço IP do contêiner
         ip_address = container.attrs['NetworkSettings']['IPAddress']
 
+        # Calcular a porta para o servidor de socket
+        port = base_port + len(containers)
+
         # Configurar o servidor de socket no contêiner
-        socket_thread = threading.Thread(target=receive_messages, args=(ip_address, 5000))
+        socket_thread = threading.Thread(target=receive_message, args=(ip_address, port))
         socket_thread.start()
 
         return jsonify({'message': 'Contêiner Docker Python criado com sucesso!', 'container_id': container_id})
@@ -48,6 +71,9 @@ def create_container():
 @app.route('/send-message', methods=['POST'])
 def send_message():
     data = request.get_json()
+    if not validate_message_data(data):
+        return jsonify({'error': 'Dados de mensagem inválidos'})
+
     origin = data['origin']
     destination = data['destination']
     content = data['message']
@@ -57,81 +83,59 @@ def send_message():
     sequence = get_next_sequence()  # Obter o próximo número de sequência
     vector_clock = get_vector_clock(origin)  # Obter o relógio vetorial atual do processo
     message = Message(timestamp, sequence, origin, destination, content, vector_clock)
-    send_socket_message(destination, message)
 
-    return jsonify({'success': True})
+    serialized_message = serialize_message(message)
 
-def send_socket_message(container_id, message):
-    container = containers.get(container_id)
-    if container:
-        # Obter o endereço IP do contêiner
+    try:
+        container = containers[destination]
         ip_address = container.attrs['NetworkSettings']['IPAddress']
 
-        # Definir as informações de conexão para o socket
-        host = ip_address
-        port = 5000  # Porta mapeada para o Flask nos contêineres
-
-        # Criar o socket e enviar a mensagem
+        # Enviar a mensagem para o contêiner de destino
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect((host, port))
-            serialized_message = json.dumps(serialize_message(message))
+            s.connect((ip_address, 5000))
             s.sendall(serialized_message.encode())
+            print(f"Mensagem enviada para o destino: {message.content}")
+    except KeyError:
+        return jsonify({'error': 'Destino inválido'})
+
+    return jsonify({'message': 'Mensagem enviada com sucesso'})
+
+def validate_message_data(data):
+    required_fields = ['origin', 'destination', 'message']
+    for field in required_fields:
+        if field not in data or not data[field]:
+            return False
+    return True
 
 def get_next_sequence():
-    # Implemente a lógica para obter o próximo número de sequência
-    # Isso pode envolver comunicação com outros contêineres ou algoritmos de consenso distribuído
-    # Neste exemplo simplificado, retornamos um número de sequência incremental
     global next_sequence
     next_sequence += 1
-   
     return next_sequence
 
 def get_vector_clock(process_id):
-    # Implemente a lógica para obter o relógio vetorial atual do processo
-    # Neste exemplo simplificado, retornamos um vetor de relógio vetorial com zeros
-    vector_clock = {process_id: 0}
+    vector_clock = {}
+    for container_id, container in containers.items():
+        ip_address = container.attrs['NetworkSettings']['IPAddress']
+        vector_clock[ip_address] = 0
+    vector_clock[process_id] = 1
     return vector_clock
 
 def serialize_message(message):
-    # Implemente a lógica para serializar a mensagem em uma string para envio pelo socket
-    # Neste exemplo simplificado, usamos um formato simples JSON
-    serialized_message = {
-        'timestamp': message.timestamp,
-        'sequence': message.sequence,
-        'origin': message.origin,
-        'destination': message.destination,
-        'content': message.content,
-        'vector_clock': message.vector_clock
-    }
-    return serialized_message
+    return json.dumps(message.__dict__)
 
-def deserialize_message(serialized_message):
-    # Implemente a lógica para desserializar a mensagem recebida do socket
-    # Neste exemplo simplificado, assumimos que a mensagem está em formato JSON
-    timestamp = serialized_message['timestamp']
-    sequence = serialized_message['sequence']
-    origin = serialized_message['origin']
-    destination = serialized_message['destination']
-    content = serialized_message['content']
-    vector_clock = serialized_message['vector_clock']
-    message = Message(timestamp, sequence, origin, destination, content, vector_clock)
-    return message
+def deserialize_message(data):
+    timestamp = data['timestamp']
+    sequence = data['sequence']
+    origin = data['origin']
+    destination = data['destination']
+    content = data['content']
+    vector_clock = data['vector_clock']
+    return Message(timestamp, sequence, origin, destination, content, vector_clock)
 
 @app.route('/get-nodes')
 def get_nodes():
     node_list = list(containers.keys())
     return jsonify(node_list)
 
-@app.route('/receive-messages', methods=['POST'])
-def receive_messages():
-    data = request.get_json()
-    ip_address = data['ip_address']
-    port = data['port']
-    
-    receive_thread = threading.Thread(target=start_server, args=(ip_address, port))
-    receive_thread.start()
-
-    return jsonify({'success': True})
-
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    app.run(host='0.0.0.0')

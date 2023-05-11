@@ -1,11 +1,32 @@
-version: "3.9"
+version: '3.9'
 services:
-  web:
+  server-1:
+    tty: true
     build:
-      context: server/
+      context: server_1/
       dockerfile: Dockerfile
     ports:
-      - "5000:5000"
-    volumes:
-      - ./server/:/app
-      - /var/run/docker.sock:/var/run/docker.sock
+      - 8000:8000
+    depends_on:
+      - server-2
+      - server-3
+  server-2:
+    tty: true
+    build:
+      context: server_2/
+      dockerfile: Dockerfile
+    ports:
+      - 8001:8000
+    depends_on:
+      - server-1
+      - server-3
+  server-3:
+    tty: true
+    build:
+      context: server_3/
+      dockerfile: Dockerfile
+    ports:
+      - 8002:8000
+    depends_on:
+      - server-1
+      - server-2
