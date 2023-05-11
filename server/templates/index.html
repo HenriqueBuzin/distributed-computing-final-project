@@ -1,158 +1,91 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-    <title>Aplicativo Flask</title>
-    <script src="https://code.jquery.com/jquery-3.6.4.min.js"
-        integrity="sha256-oP6HI9z1XaZNBrJURtCoUT5SUnxFr8s3BzRl+cbzUq8=" crossorigin="anonymous"></script>
-    <script type="text/javascript">
-        $(document).ready(function () {
-            function createContainer() {
-                $.ajax({
-                    url: '/create-container',
-                    type: 'GET',
-                    dataType: 'json',
-                    success: function (data) {
-                        if (data.error) {
-                            console.log('Erro ao criar o contêiner Docker Python: ' + data.message);
-                        } else {
-                            console.log('Contêiner Docker Python criado com sucesso! ID: ' + data.container_id);
-                            var containerItem = $('<li>').text(data.container_id);
-                            $('#containerList').append(containerItem);
-                            getNodeList(); // Atualizar a lista de nós
-                            getOriginList(); // Atualizar a lista de nós de origem
-                        }
-                    },
-                    error: function (error) {
-                        console.log(error);
-                    }
+    <title>Flask Docker Communication</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <h1>Flask Docker Communication</h1>
+
+    <h2>Criar Novo Container</h2>
+    <button id="create-container">Criar Container</button>
+
+    <h2>Lista de Nós</h2>
+    <ul id="node-list"></ul>
+
+    <h2>Enviar Mensagem</h2>
+    <form id="message-form">
+        <label for="origin">Nó de Origem:</label>
+        <select id="origin" name="origin"></select>
+
+        <label for="destination">Nó de Destino:</label>
+        <select id="destination" name="destination"></select>
+
+        <label for="message">Mensagem:</label>
+        <input type="text" id="message" name="message">
+
+        <button type="submit">Enviar</button>
+    </form>
+
+    <script>
+        $(document).ready(function() {
+            // Função para atualizar a lista de nós
+            function updateNodeList() {
+                $.getJSON('/get-nodes', function(data) {
+                    var nodeList = $('#node-list');
+                    nodeList.empty();
+
+                    $.each(data, function(index, node) {
+                        nodeList.append('<li>' + node + '</li>');
+                    });
+
+                    // Atualizar as opções do formulário de envio de mensagem
+                    var originSelect = $('#origin');
+                    var destinationSelect = $('#destination');
+                    originSelect.empty();
+                    destinationSelect.empty();
+
+                    $.each(data, function(index, node) {
+                        originSelect.append('<option value="' + node + '">' + node + '</option>');
+                        destinationSelect.append('<option value="' + node + '">' + node + '</option>');
+                    });
                 });
             }
 
-            function updateNodeList(nodes, selectElement) {
-                selectElement.empty();
+            // Atualizar a lista de nós ao carregar a página
+            updateNodeList();
 
-                $.each(nodes, function (index, node) {
-                    var option = $('<option>').text(node);
-                    selectElement.append(option);
+            // Criar um novo contêiner ao clicar no botão
+            $('#create-container').on('click', function() {
+                $.getJSON('/create-container', function(data) {
+                    console.log(data.message);
+                    updateNodeList();
                 });
-            }
-
-            function getNodeList() {
-                $.ajax({
-                    url: '/get-nodes',
-                    type: 'GET',
-                    dataType: 'json',
-                    success: function (data) {
-                        updateNodeList(data.concat(['Broadcast']), $('#recipient'));
-                        updateNodeList(data, $('#origin'));
-                    },
-                    error: function (error) {
-                        console.log('Erro ao obter a lista de nós:', error);
-                    }
-                });
-            }
-
-            function getOriginList() {
-                $.ajax({
-                    url: '/get-nodes',
-                    type: 'GET',
-                    dataType: 'json',
-                    success: function (data) {
-                        updateNodeList(data, $('#origin'));
-                    },
-                    error: function (error) {
-                        console.log('Erro ao obter a lista de nós de origem:', error);
-                    }
-                });
-            }
-
-            $('#createContainerBtn').click(function () {
-                createContainer();
             });
 
-            // Obter a lista de nós quando a página carregar
-            getNodeList();
-
-            $('#sendMessageBtn').click(function () {
+            // Enviar mensagem ao contêiner de destino ao enviar o formulário
+            $('#message-form').on('submit', function(e) {
+                e.preventDefault();
                 var origin = $('#origin').val();
-                var recipient = $('#recipient').val();
+                var destination = $('#destination').val();
                 var message = $('#message').val();
-                var timestamp = Date.now();  // Obter o carimbo de data/hora atual
 
                 $.ajax({
                     url: '/send-message',
                     type: 'POST',
-                    dataType: 'json',
                     contentType: 'application/json',
                     data: JSON.stringify({
                         origin: origin,
-                        recipient: recipient,
-                        message: message,
-                        timestamp: timestamp
+                        destination: destination,
+                        message: message
                     }),
-                    success: function (data) {
-                        if (data.success) {
-                            addSuccessMessage(origin, recipient, message);
-                        } else {
-                            addFailureMessage(origin, recipient, message);
-                        }
-                    },
-                    error: function (error) {
-                        console.log('Erro ao enviar a mensagem:', error);
+                    success: function(data) {
+                        console.log('Mensagem enviada com sucesso!');
+                        $('#message-form')[0].reset();
                     }
                 });
             });
-
         });
-
-        function addSuccessMessage(origin, recipient, message) {
-            var listItem = $('<li>').text('Origem: ' + origin + ', Destinatário: ' + recipient + ', Mensagem: ' + message + ', Status: Concluído');
-            $('#successList').append(listItem);
-        }
-
-        function addFailureMessage(origin, recipient, message) {
-            var listItem = $('<li>').text('Origem: ' + origin + ', Destinatário: ' + recipient + ', Mensagem: ' + message + ', Status: Falha');
-            $('#failureList').append(listItem);
-        }
-
     </script>
-</head>
-
-<body>
-    <h1>Aplicativo Flask</h1>
-    <button id="createContainerBtn">Criar Container</button>
-    <hr>
-    <h2>Lista de Contêineres:</h2>
-    <ul id="containerList"></ul>
-
-    <h2>Enviar Mensagem:</h2>
-    <label for="recipient">Destinatário:</label>
-    <select id="recipient"></select>
-
-    <br>
-
-    <label for="origin">Nó de Origem:</label>
-    <select id="origin"></select>
-
-    <br>
-
-    <label for="message">Mensagem:</label>
-    <input type="text" id="message" required>
-
-    <br>
-
-    <button id="sendMessageBtn">Enviar</button>
-
-    <hr>
-
-    <h2>Status de Entrega:</h2>
-    <h3>Concluído:</h3>
-    <ul id="successList"></ul>
-
-    <h3>Falha:</h3>
-    <ul id="failureList"></ul>
-
 </body>
-
 </html>

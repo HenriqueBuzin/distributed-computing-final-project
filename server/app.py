@@ -1,16 +1,26 @@
 import docker
 from flask import Flask, render_template, jsonify, request
-from flask_socketio import SocketIO, emit
-from collections import defaultdict
+import socket
+import threading
+import time
 import json
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'seu_secret_key_aqui'
-socketio = SocketIO(app)
 client = docker.from_env()
 containers = {}
-timestamps = defaultdict(int)  # Vetor de carimbos de data/hora lógicos para cada container
-votes = defaultdict(list)  # Dicionário para armazenar os votos recebidos dos containers
+next_sequence = 0  # Próximo número de sequência disponível
+
+class Message:
+    def __init__(self, timestamp, sequence, origin, destination, content, vector_clock):
+        self.timestamp = timestamp
+        self.sequence = sequence
+        self.origin = origin
+        self.destination = destination
+        self.content = content
+        self.vector_clock = vector_clock
+
+    def update_vector_clock(self, process_id):
+        self.vector_clock[process_id] += 1
 
 @app.route('/')
 def index():
@@ -19,96 +29,109 @@ def index():
 @app.route('/create-container')
 def create_container():
     try:
+        # Criação do contêiner Docker Python
         container = client.containers.run('python:3.9', detach=True)
         container_id = container.id
         containers[container_id] = container
+
+        # Obter o endereço IP do contêiner
+        ip_address = container.attrs['NetworkSettings']['IPAddress']
+
+        # Configurar o servidor de socket no contêiner
+        socket_thread = threading.Thread(target=receive_messages, args=(ip_address, 5000))
+        socket_thread.start()
+
         return jsonify({'message': 'Contêiner Docker Python criado com sucesso!', 'container_id': container_id})
     except docker.errors.APIError as e:
         return jsonify({'error': 'Erro ao criar o contêiner Docker Python', 'message': str(e)})
+
+@app.route('/send-message', methods=['POST'])
+def send_message():
+    data = request.get_json()
+    origin = data['origin']
+    destination = data['destination']
+    content = data['message']
+
+    # Enviar a mensagem para o contêiner de destino
+    timestamp = time.time()  # Carimbo de tempo atual
+    sequence = get_next_sequence()  # Obter o próximo número de sequência
+    vector_clock = get_vector_clock(origin)  # Obter o relógio vetorial atual do processo
+    message = Message(timestamp, sequence, origin, destination, content, vector_clock)
+    send_socket_message(destination, message)
+
+    return jsonify({'success': True})
+
+def send_socket_message(container_id, message):
+    container = containers.get(container_id)
+    if container:
+        # Obter o endereço IP do contêiner
+        ip_address = container.attrs['NetworkSettings']['IPAddress']
+
+        # Definir as informações de conexão para o socket
+        host = ip_address
+        port = 5000  # Porta mapeada para o Flask nos contêineres
+
+        # Criar o socket e enviar a mensagem
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((host, port))
+            serialized_message = json.dumps(serialize_message(message))
+            s.sendall(serialized_message.encode())
+
+def get_next_sequence():
+    # Implemente a lógica para obter o próximo número de sequência
+    # Isso pode envolver comunicação com outros contêineres ou algoritmos de consenso distribuído
+    # Neste exemplo simplificado, retornamos um número de sequência incremental
+    global next_sequence
+    next_sequence += 1
+   
+    return next_sequence
+
+def get_vector_clock(process_id):
+    # Implemente a lógica para obter o relógio vetorial atual do processo
+    # Neste exemplo simplificado, retornamos um vetor de relógio vetorial com zeros
+    vector_clock = {process_id: 0}
+    return vector_clock
+
+def serialize_message(message):
+    # Implemente a lógica para serializar a mensagem em uma string para envio pelo socket
+    # Neste exemplo simplificado, usamos um formato simples JSON
+    serialized_message = {
+        'timestamp': message.timestamp,
+        'sequence': message.sequence,
+        'origin': message.origin,
+        'destination': message.destination,
+        'content': message.content,
+        'vector_clock': message.vector_clock
+    }
+    return serialized_message
+
+def deserialize_message(serialized_message):
+    # Implemente a lógica para desserializar a mensagem recebida do socket
+    # Neste exemplo simplificado, assumimos que a mensagem está em formato JSON
+    timestamp = serialized_message['timestamp']
+    sequence = serialized_message['sequence']
+    origin = serialized_message['origin']
+    destination = serialized_message['destination']
+    content = serialized_message['content']
+    vector_clock = serialized_message['vector_clock']
+    message = Message(timestamp, sequence, origin, destination, content, vector_clock)
+    return message
 
 @app.route('/get-nodes')
 def get_nodes():
     node_list = list(containers.keys())
     return jsonify(node_list)
 
-@app.route('/send-message', methods=['POST'])
-def send_message():
+@app.route('/receive-messages', methods=['POST'])
+def receive_messages():
     data = request.get_json()
-    recipient = data['recipient']
-    origin = data['origin']
-    message = data['message']
-    timestamp = data['timestamp']
-
-    # Emitir um evento SocketIO para processar a mensagem
-    socketio.emit('message', {
-        'recipient': recipient,
-        'origin': origin,
-        'message': message,
-        'timestamp': timestamp
-    })
+    ip_address = data['ip_address']
+    port = data['port']
+    
+    receive_thread = threading.Thread(target=start_server, args=(ip_address, port))
+    receive_thread.start()
 
     return jsonify({'success': True})
 
-@socketio.on('message')
-def handle_message(data):
-    recipient = data['recipient']
-    origin = data['origin']
-    message = data['message']
-    timestamp = data['timestamp']  # Carimbo de data/hora lógico da mensagem
-
-    # Atualizar o carimbo de data/hora lógico do remetente
-    timestamps[origin] += 1
-
-    # Enviar votos para todos os containers, incluindo o próprio remetente
-    for container_id in containers.keys():
-        votes[container_id].append((origin, timestamps[origin]))
-
-    # Verificar a ordem causal antes de enviar a mensagem
-    if check_causal_order(origin, timestamps[origin]):
-        # Verificar se todos os votos foram recebidos de todos os containers
-        if check_total_order():
-            # Enviar a mensagem para o recipiente específico ou para todos os recipientes (broadcast)
-            if recipient == 'broadcast':
-                # Enviar para todos os recipientes
-                socketio.emit('message', {'sender': 'broadcast', 'message': message, 'timestamp': timestamp}, broadcast=True)
-            else:
-                # Encontrar o recipiente pelo ID e enviar a mensagem apenas para ele
-                container = containers.get(recipient)
-                if container:
-                    socketio.emit('message', {'sender': recipient, 'message': message, 'timestamp': timestamp}, room=container.id)
-
-@socketio.on('message_status')
-def handle_message_status(data):
-    origin = data['origin']
-    recipient = data['recipient']
-    message = data['message']
-    status = data['status']
-
-    emit('message_status', {'origin': origin, 'recipient': recipient, 'message': message, 'status': status})
-
-def check_causal_order(origin, timestamp):
-    # Verificar se o carimbo de data/hora lógico da mensagem é maior ou igual ao último carimbo de data/hora lógico conhecido do remetente
-    if timestamp >= timestamps[origin]:
-        return True
-    else:
-        return False
-
-def check_total_order():
-    total_votes = len(containers)  # Número total de votos esperados
-
-    # Verificar se todos os containers enviaram seus votos
-    for container_id, vote_list in votes.items():
-        if len(vote_list) < total_votes:
-            return False
-
-    # Verificar se todos os votos são iguais
-    for container_id, vote_list in votes.items():
-        if vote_list != votes[list(containers.keys())[0]]:
-            return False
-
-    # Limpar os votos após a verificação
-    votes.clear()
-    return True
-
 if __name__ == '__main__':
-    socketio.run(app, debug=True, host='0.0.0.0')
+    app.run(debug=True, host='0.0.0.0')
