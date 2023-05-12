@@ -43,5 +43,20 @@ def receive_message():
 def get_received_messages():
     return jsonify(received_messages)
 
+@app.route("/broadcast", methods=["POST"])
+def broadcast():
+    data = request.get_json()
+    if data and "message" in data:
+        message = data["message"]
+
+        for destination, url in destinations.items():
+            if destination != "server-1":
+                payload = {"sender": "server-1", "message": message}
+                response = requests.post(f"{url}/message", json=payload)
+
+        return "Mensagem enviada para todos os servidores (exceto server-1)"
+
+    return "Mensagem inválida"
+
 if __name__ == "__main__":
     app.run(host="localhost", port=8001)

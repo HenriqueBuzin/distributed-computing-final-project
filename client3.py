@@ -34,14 +34,29 @@ def send():
 @app.route("/message", methods=["POST"])
 def receive_message():
     data = request.get_json()
+    sender = data.get("sender")
     message = data.get("message")
-    sender = request.remote_addr
-    received_messages.append(message)
+    received_messages.append({sender: message})
     return "Mensagem recebida pelo servidor"
 
 @app.route("/receive", methods=["GET"])
 def get_received_messages():
     return jsonify(received_messages)
+
+@app.route("/broadcast", methods=["POST"])
+def broadcast():
+    data = request.get_json()
+    if data and "message" in data:
+        message = data["message"]
+
+        for destination, url in destinations.items():
+            if destination != "server-3":
+                payload = {"sender": "server-3", "message": message}
+                response = requests.post(f"{url}/message", json=payload)
+
+        return "Mensagem enviada para todos os servidores (exceto server-3)"
+
+    return "Mensagem inválida"
 
 if __name__ == "__main__":
     app.run(host="localhost", port=8003)
