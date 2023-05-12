@@ -4,7 +4,7 @@
 ## Enviar
 Método: POST <br />
 URL: http://localhost:8001/send <br />
-JSON: <br />
+JSON:
 {
   "destination": "server-2",
   "message": "Olá, servidor 2222!"
@@ -13,7 +13,7 @@ JSON: <br />
 ## Receber
 Método: GET <br />
 URL: http://localhost:8002/receive <br />
-JSON: <br />
+JSON:
 [
     {
         "server-2": "Olá, servidor 2!"
@@ -23,7 +23,7 @@ JSON: <br />
 ## Broadcast
 Método: POST <br />
 URL: http://localhost:8001/broadcast <br />
-JSON: <br />
+JSON:
 [
     {
         "message": "Olá, servidor 2!"
