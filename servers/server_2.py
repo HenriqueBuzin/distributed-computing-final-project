@@ -49,8 +49,11 @@ def send():
     url = f"{destinations[destination]}/receive"
     response = requests.post(url, json=payload)
 
-    return "Mensagem enviada com sucesso"
-
+    # Retorna a resposta com o relógio lógico
+    return jsonify({
+        "message": "Mensagem recebida pelo servidor",
+        "logical_clock": logical_clocks[server]
+    })
 
 @app.route("/receive", methods=["GET", "POST"])
 def get_received_messages():
@@ -71,8 +74,11 @@ def get_received_messages():
             "logical_clock": logical_clock
         })
 
-        return "Mensagem recebida pelo servidor"
-
+        # Retorna a resposta com o relógio lógico
+        return jsonify({
+            "message": "Mensagem recebida pelo servidor",
+            "logical_clock": logical_clocks[server]
+        })
 
 @app.route("/broadcast", methods=["POST"])
 def broadcast():
@@ -88,9 +94,13 @@ def broadcast():
                 payload = {"sender": server, "message": message, "logical_clock": logical_clocks[server]}
                 response = requests.post(f"{url}/receive", json=payload)
 
-        return f"Mensagem enviada para todos os servidores (exceto {server})"
-    return "Mensagem inválida"
+                if response.status_code == 200:
+                    # Atualiza o relógio lógico do servidor atual com base no relógio lógico do destinatário
+                    logical_clocks[server] = max(logical_clocks[server], response.json()["logical_clock"]) + 1
 
+        return "Broadcast realizado com sucesso"
+    
+    return "Erro: mensagem ausente"
 
 if __name__ == "__main__":
     app.run(host="localhost", port=port)
