@@ -1,5 +1,7 @@
 from flask import Flask, request, jsonify
+import numpy as np
 import requests
+import asyncio
 
 app = Flask(__name__)
 
@@ -16,13 +18,10 @@ server = "server-1"
 # Lista para armazenar as mensagens recebidas
 received_messages = []
 
-# Dicionário para rastrear os relógios lógicos dos servidores
-logical_clocks = {
-    "server-1": 0,
-    "server-2": 0,
-    "server-3": 0
-}
-
+# Matrizes DELIV e SENT
+n = len(destinations)
+DELIV = np.zeros(n, dtype=int)
+SENT = np.zeros((n, n), dtype=int)
 
 @app.route("/send", methods=["POST"])
 def send():
@@ -36,67 +35,65 @@ def send():
     if destination not in destinations:
         return "Erro: destino inválido", 400
 
-    # Incrementa o relógio lógico do servidor atual
-    logical_clocks[server] += 1
+    STM = SENT[destinations[destination]].copy()
 
-    # Adiciona o relógio lógico à mensagem
     payload = {
         "sender": server,
         "message": message,
-        "logical_clock": logical_clocks[server]
+        "stm": STM.tolist()
     }
 
     url = f"{destinations[destination]}/receive"
     response = requests.post(url, json=payload)
 
-    # Retorna a resposta com o relógio lógico
     return jsonify({
-        "message": "Mensagem recebida pelo servidor",
-        "logical_clock": logical_clocks[server]
+        "message": "Mensagem recebida pelo servidor"
     })
 
-@app.route("/receive", methods=["GET", "POST"])
-def get_received_messages():
-    if request.method == "GET":
-        return jsonify(received_messages)
-    elif request.method == "POST":
-        data = request.get_json()
-        sender = data.get("sender")
-        message = data.get("message")
-        logical_clock = data.get("logical_clock")
+# Rota para receber mensagens
+@app.route("/receive", methods=["POST"])
+def receive():
+    data = request.get_json()
+    sender = data.get("sender")
+    message = data.get("message")
+    stm = np.array(data.get("stm"))
 
-        # Atualiza o relógio lógico do servidor atual
-        logical_clocks[server] = max(logical_clocks[server], logical_clock) + 1
+    asyncio.create_task(process_message(sender, message, stm))
 
+    return jsonify({
+        "message": "Mensagem recebida pelo servidor"
+    })
+    
+# Função assíncrona para processar a entrega de mensagens
+async def process_message(sender, message, stm):
+    if np.all(DELIV >= stm):
         received_messages.append({
             "sender": sender,
-            "message": message,
-            "logical_clock": logical_clock
+            "message": message
         })
+        
+        DELIV[destinations[sender]] += 1
+        SENT[destinations[sender], destinations[server]] += 1
 
-        # Retorna a resposta com o relógio lógico
         return jsonify({
-            "message": "Mensagem recebida pelo servidor",
-            "logical_clock": logical_clocks[server]
+            "message": "Mensagem recebida pelo servidor"
         })
 
+    else:
+        # Aguardar um curto período de tempo antes de tentar novamente
+        await asyncio.sleep(0.1)
+        await process_message(sender, message, stm)
+    
 @app.route("/broadcast", methods=["POST"])
 def broadcast():
     data = request.get_json()
     if data and "message" in data:
         message = data["message"]
 
-        # Incrementa o relógio lógico do servidor atual
-        logical_clocks[server] += 1
-
         for destination, url in destinations.items():
             if destination != server:
-                payload = {"sender": server, "message": message, "logical_clock": logical_clocks[server]}
+                payload = {"sender": server, "message": message}
                 response = requests.post(f"{url}/receive", json=payload)
-
-                if response.status_code == 200:
-                    # Atualiza o relógio lógico do servidor atual com base no relógio lógico do destinatário
-                    logical_clocks[server] = max(logical_clocks[server], response.json()["logical_clock"]) + 1
 
         return "Broadcast realizado com sucesso"
     
