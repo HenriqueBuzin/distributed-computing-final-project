@@ -100,12 +100,6 @@ async def receive():
     message = data.get("message")
     stm = np.array(data.get("stm"))
 
-    asyncio.create_task(process_message(sender, message, stm))
-
-    return jsonify({"message": "Mensagem recebida pelo servidor"})
-    
-# Função assíncrona para processar a entrega de mensagens
-async def process_message(sender, message, stm):
     if np.all(DELIV >= stm):
         received_messages.append({
             "sender": sender,
@@ -130,7 +124,7 @@ async def process_message(sender, message, stm):
     else:
         # Aguardar um curto período de tempo antes de tentar novamente
         await asyncio.sleep(0.1)
-        await process_message(sender, message, stm)
+        return await receive()
 
 @app.route("/broadcast", methods=["POST"])
 async def broadcast():
@@ -150,77 +144,58 @@ async def broadcast():
 
 @app.route("/deliver", methods=["GET", "POST"])
 async def deliver():
-
     data = await request.get_json()
-    
+
     if data and "message" in data and "sender" in data:
         message = data["message"]
         sender = data["sender"]
-        sender = sender["name"]
 
     if request.method == "GET":
-
         seqnum = 1
 
         for destination in destinations:
-            if not destination["is_server"]:
-                payload = {"sender": server, "message": message, "seqnum": seqnum}
+            if destination["name"] != sender:
+                payload = {"sender": sender, "message": message, "seqnum": seqnum}
                 response = requests.post(f"{destination['url']}/deliver", json=payload)
 
-        seqnum += 1
-
     elif request.method == "POST":
-
         if data and "seqnum" in data:
             seqnum = data["seqnum"]
 
-        asyncio.create_task(broadcast_message(sender, message, seqnum))
+        nextdeliver = 1
 
-        return jsonify({
-            "message": "Mensagem recebida pelo servidor"
+        pending_messages = []
+
+        pending_messages.append({
+            "sender": sender,
+            "message": message,
+            "seqnum": seqnum
         })
 
-async def broadcast_message(sender, message, seqnum):
-    nextdeliver = 1
+        while pending_messages:
+            messages_to_remove = []
 
-    pending_messages = []
-                
-    pending_messages.append({
-        "sender": sender,
-        "message": message,
-        "seqnum": seqnum 
-    })
+            for message_info in pending_messages:
+                sender = message_info["sender"]
+                message = message_info["message"]
+                segnum = message_info["seqnum"]
 
-    if pending_messages:
-        
-        messages_to_remove = []
+                if segnum == nextdeliver:
+                    received_messages.append({
+                        "sender": sender,
+                        "message": message
+                    })
 
-        for message_info in pending_messages:
-            sender = message_info["sender"]
-            message = message_info["message"]
-            segnum = message_info["seqnum"]
+                    messages_to_remove.append(message_info)
 
-            if segnum == nextdeliver:
-                received_messages.append({
-                    "sender": sender,
-                    "message": message
-                })
-        
-                messages_to_remove.append(message_info)
+            for message_info in messages_to_remove:
+                pending_messages.remove(message_info)
 
-        for message_info in messages_to_remove:
-            pending_messages.remove(message_info)
+            nextdeliver += 1
 
-        nextdeliver += 1
+            await asyncio.sleep(0.1)
 
-        return jsonify({
-            "message": "Mensagem recebida pelo servidor"
-        })
-    
-    else:
-        # Aguardar um curto período de tempo antes de tentar novamente
-        await asyncio.sleep(0.1)
-        await broadcast_message(sender, message, seqnum)
+    return jsonify({"message": "Mensagem recebida pelo servidor"})
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
