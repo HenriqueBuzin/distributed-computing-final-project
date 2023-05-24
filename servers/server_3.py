@@ -135,12 +135,13 @@ async def process_message(sender, message, stm):
 @app.route("/broadcast", methods=["POST"])
 async def broadcast():
     data = await request.get_json()
+
     if data and "message" in data:
         message = data["message"]
 
         for destination in destinations:
             if destination["is_sequencer"]:
-                payload = {"sender": server, "message": message}
+                payload = {"sender": server["name"], "message": message}
                 response = requests.get(f"{destination['url']}/deliver", json=payload)
 
         return "Broadcast realizado com sucesso"
@@ -155,7 +156,7 @@ async def deliver():
     if data and "message" in data and "sender" in data:
         message = data["message"]
         sender = data["sender"]
-
+        sender = sender["name"]
 
     if request.method == "GET":
 
