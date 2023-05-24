@@ -3,6 +3,7 @@ from quart import Quart, request, jsonify
 from dotenv import load_dotenv
 import numpy as np
 import requests
+import aiohttp
 import os
 
 app = Quart(__name__)
@@ -133,34 +134,51 @@ async def broadcast():
     if data and "message" in data:
         message = data["message"]
 
-        for destination in destinations:
-            if destination["is_sequencer"]:
-                payload = {"sender": server["name"], "message": message}
-                response = requests.get(f"{destination['url']}/deliver", json=payload)
+        tasks = []
+        async with aiohttp.ClientSession() as session:
+            for destination in destinations:
+                if destination["is_sequencer"]:
+                    payload = {"sender": server["name"], "message": message}
+                    tasks.append(session.post(f"{destination['url']}/sequencer", json=payload))
+
+            await asyncio.gather(*tasks)
 
         return "Broadcast realizado com sucesso"
-    
+
     return "Erro: mensagem ausente"
 
-@app.route("/deliver", methods=["GET", "POST"])
-async def deliver():
+@app.route("/sequencer", methods=["POST"])
+async def sequencer():
+
     data = await request.get_json()
 
     if data and "message" in data and "sender" in data:
         message = data["message"]
         sender = data["sender"]
 
-    if request.method == "GET":
         seqnum = 1
 
         for destination in destinations:
             if destination["name"] != sender:
                 payload = {"sender": sender, "message": message, "seqnum": seqnum}
-                response = requests.post(f"{destination['url']}/deliver", json=payload)
+                async with aiohttp.ClientSession() as session:
+                    await session.post(f"{destination['url']}/deliver", json=payload)
 
-    elif request.method == "POST":
-        if data and "seqnum" in data:
-            seqnum = data["seqnum"]
+        seqnum += 1
+
+        return "Sequenciador com sucesso"
+    
+    return "Falha no sequenciador"
+
+@app.route("/deliver", methods=["POST"])
+async def deliver():
+    
+    data = await request.get_json()
+
+    if data and "message" in data and "sender" in data and "seqnum" in data:
+        message = data["message"]
+        sender = data["sender"]
+        seqnum = data["seqnum"]
 
         nextdeliver = 1
 
@@ -178,9 +196,9 @@ async def deliver():
             for message_info in pending_messages:
                 sender = message_info["sender"]
                 message = message_info["message"]
-                segnum = message_info["seqnum"]
+                seqnum = message_info["seqnum"]
 
-                if segnum == nextdeliver:
+                if seqnum == nextdeliver:
                     received_messages.append({
                         "sender": sender,
                         "message": message
