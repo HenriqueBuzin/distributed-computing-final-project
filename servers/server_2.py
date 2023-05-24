@@ -1,9 +1,8 @@
-import asyncio
 from quart import Quart, request, jsonify
 from dotenv import load_dotenv
 import numpy as np
-import requests
 import aiohttp
+import asyncio
 import os
 
 app = Quart(__name__)
@@ -81,9 +80,9 @@ async def send():
 
     destination_url = destination_info["url"]
     url = f"{destination_url}/receive"
-    response = requests.post(url, json=payload)
-
-    return jsonify({"message": "Mensagem recebida pelo servidor"})
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload) as response:
+            return jsonify({"message": "Mensagem recebida pelo servidor"})
 
 # Rota para receber mensagens
 @app.route("/receive", methods=["POST", "GET"])
