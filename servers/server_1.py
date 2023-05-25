@@ -73,7 +73,6 @@ async def send():
     STM = SENT[destination_index].copy()
 
     payload = {
-        "sender": server["name"],
         "message": message,
         "stm": STM.tolist()
     }
@@ -102,10 +101,21 @@ async def receive():
 
     if np.all(DELIV >= stm):
         received_messages.append({
-            "sender": sender,
             "message": message
         })
         
+        # Send the received message to other servers
+        for destination in destinations:
+            if destination["is_server"] and destination["name"] != server["name"]:
+                payload = {
+                    "message": message,
+                    "stm": stm.tolist()
+                }
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(f"{destination['url']}/send", json=payload) as response:
+                        response_data = await response.json()
+                        print(response_data)
+
         sender_info = next((d for d in destinations if d["name"] == sender), None)
         if not sender_info:
             return jsonify({
@@ -126,42 +136,20 @@ async def receive():
         await asyncio.sleep(0.1)
         return await receive()
 
-@app.route("/broadcast", methods=["POST"])
-async def broadcast():
-    data = await request.get_json()
-
-    if data and "message" in data:
-        message = data["message"]
-
-        tasks = []
-        async with aiohttp.ClientSession() as session:
-            for destination in destinations:
-                if destination["is_sequencer"]:
-                    payload = {"sender": server["name"], "message": message}
-                    tasks.append(session.post(f"{destination['url']}/sequencer", json=payload))
-
-            await asyncio.gather(*tasks)
-
-        return "Broadcast realizado com sucesso"
-
-    return "Erro: mensagem ausente"
-
 @app.route("/sequencer", methods=["POST"])
 async def sequencer():
 
     data = await request.get_json()
 
-    if data and "message" in data and "sender" in data:
+    if data and "message" in data:
         message = data["message"]
-        sender = data["sender"]
 
         seqnum = 1
 
         for destination in destinations:
-            if destination["name"] != sender:
-                payload = {"sender": sender, "message": message, "seqnum": seqnum}
-                async with aiohttp.ClientSession() as session:
-                    await session.post(f"{destination['url']}/deliver", json=payload)
+            payload = {"message": message, "seqnum": seqnum}
+            async with aiohttp.ClientSession() as session:
+                await session.post(f"{destination['url']}/deliver", json=payload)
 
         seqnum += 1
 
@@ -174,9 +162,8 @@ async def deliver():
     
     data = await request.get_json()
 
-    if data and "message" in data and "sender" in data and "seqnum" in data:
+    if data and "message" in data and "seqnum" in data:
         message = data["message"]
-        sender = data["sender"]
         seqnum = data["seqnum"]
 
         nextdeliver = 1
@@ -184,7 +171,6 @@ async def deliver():
         pending_messages = []
 
         pending_messages.append({
-            "sender": sender,
             "message": message,
             "seqnum": seqnum
         })
@@ -193,13 +179,11 @@ async def deliver():
             messages_to_remove = []
 
             for message_info in pending_messages:
-                sender = message_info["sender"]
                 message = message_info["message"]
                 seqnum = message_info["seqnum"]
 
                 if seqnum == nextdeliver:
                     received_messages.append({
-                        "sender": sender,
                         "message": message
                     })
 
