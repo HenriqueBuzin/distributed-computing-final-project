@@ -83,10 +83,12 @@ async def send():
     STM = SENT[destination_index].copy()
 
     payload = {
+        "sender": server["name"],
         "message": message,
         "stm": STM.tolist()
     }
-
+    
+    print(payload)
     destination_url = destination_info["url"]
     url = f"{destination_url}/receive"
     async with aiohttp.ClientSession() as session:

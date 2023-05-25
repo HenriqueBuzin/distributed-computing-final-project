@@ -86,12 +86,14 @@ async def send():
     STM = SENT[destination_index].copy()
 
     payload = {
+        "sender":server["name"],
         "message": message,
         "stm": STM.tolist()
     }
 
     destination_url = destination_info["url"]
     url = f"{destination_url}/receive"
+    
     async with aiohttp.ClientSession() as session:
         async with session.post(url, json=payload) as response:
             return jsonify({"message": "Mensagem recebida pelo servidor"})
@@ -114,21 +116,10 @@ async def receive():
 
     if np.all(DELIV >= stm):
         received_messages.append({
+            "sender":sender,
             "message": message
         })
         
-        # Send the received message to other servers
-        for destination in destinations:
-            if destination["is_server"] and destination["name"] != server["name"]:
-                payload = {
-                    "message": message,
-                    "stm": stm.tolist()
-                }
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(f"{destination['url']}/send", json=payload) as response:
-                        response_data = await response.json()
-                        print(response_data)
-
         sender_info = next((d for d in destinations if d["name"] == sender), None)
         if not sender_info:
             return jsonify({
@@ -139,6 +130,18 @@ async def receive():
 
         DELIV[sender_index] += 1
         SENT[sender_index, destinations.index(server)] += 1
+
+        if sender_info["category"] == "CLIENT":
+            # Encaminhar a mensagem para os outros servidores
+            for destination in destinations:
+                if destination["category"] == "SERVER" and destination["name"] != server["name"]:
+                    url = f"{server['url']}/send"
+                    payload = {"destination": destination["name"], "message": message}
+
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(url, json=payload) as response:
+                            response_data = await response.json()
+                            # Process the response data if needed
 
         return jsonify({
             "message": "Mensagem recebida pelo servidor"
