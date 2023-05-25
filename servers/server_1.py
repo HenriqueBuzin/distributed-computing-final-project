@@ -12,36 +12,41 @@ load_dotenv()
 # Constrói a lista de destinos a partir das variáveis do arquivo .env
 destinations = []
 
-for i in range(1, 4):
+# Assuming the maximum number of servers is known or can be determined
+max_servers = int(os.getenv("MAX_SERVERS"))
+server=None
+
+for i in range(1, max_servers + 1):
     name = os.getenv(f"SERVER_{i}_NAME")
     url = os.getenv(f"SERVER_{i}_URL")
     is_sequencer = os.getenv(f"SERVER_{i}_IS_SEQUENCER") == "True"
     port = int(os.getenv(f"SERVER_{i}_PORT"))
+    category = os.getenv(f"SERVER_{i}_CATEGORY")
     is_server = False
     
     # Verifica o nome do arquivo para definir is_server=True no servidor correspondente
     if os.path.basename(__file__) == f"server_{i}.py":
         is_server = True
-    
+        server = {
+            "name": name,
+            "url": url,
+            "is_sequencer": is_sequencer,
+            "port": port,
+            "category": category,
+            "is_server": is_server
+        }
+
     destination = {
         "name": name,
         "url": url,
         "is_sequencer": is_sequencer,
         "port": port,
+        "category": category,
         "is_server": is_server
     }
     
     destinations.append(destination)
 
-# Lista para armazenar as mensagens recebidas
-received_messages = []
-
-# Matrizes DELIV e SENT
-n = len(destinations)
-DELIV = np.zeros(n, dtype=int)
-SENT = np.zeros((n, n), dtype=int)
-
-server = next((d for d in destinations if d["is_server"]), None)
 if not server:
     print("Erro: servidor não encontrado")
     raise Exception("Servidor não encontrado")
@@ -50,6 +55,11 @@ port = server["port"]
 if not port:
     print("Erro: porta não definida")
     raise Exception("Porta não definida")
+
+# Matrizes DELIV e SENT
+n = len(destinations)
+DELIV = np.zeros(n, dtype=int)
+SENT = np.zeros((n, n), dtype=int)
 
 # Rota para enviar mensagens
 @app.route("/send", methods=["POST"])
@@ -83,120 +93,28 @@ async def send():
         async with session.post(url, json=payload) as response:
             return jsonify({"message": "Mensagem recebida pelo servidor"})
 
-# Rota para receber mensagens
-@app.route("/receive", methods=["POST", "GET"])
-async def receive():
-    
-    if request.method == "GET":
-        return jsonify(received_messages)
-    
-    data = await request.get_json()
-
-    if data is None:
-        return jsonify({"message": "Erro: dados ausentes"}), 400
-    
-    sender = data.get("sender")
-    message = data.get("message")
-    stm = np.array(data.get("stm"))
-
-    if np.all(DELIV >= stm):
-        received_messages.append({
-            "message": message
-        })
-        
-        # Send the received message to other servers
-        for destination in destinations:
-            if destination["is_server"] and destination["name"] != server["name"]:
-                payload = {
-                    "message": message,
-                    "stm": stm.tolist()
-                }
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(f"{destination['url']}/send", json=payload) as response:
-                        response_data = await response.json()
-                        print(response_data)
-
-        sender_info = next((d for d in destinations if d["name"] == sender), None)
-        if not sender_info:
-            return jsonify({
-                "message": "Erro: remetente inválido"
-            })
-
-        sender_index = destinations.index(sender_info)
-
-        DELIV[sender_index] += 1
-        SENT[sender_index, destinations.index(server)] += 1
-
-        return jsonify({
-            "message": "Mensagem recebida pelo servidor"
-        })
-
-    else:
-        # Aguardar um curto período de tempo antes de tentar novamente
-        await asyncio.sleep(0.1)
-        return await receive()
-
-@app.route("/sequencer", methods=["POST"])
-async def sequencer():
-
+# Rota para enviar mensagens
+@app.route("/broadcast", methods=["POST"])
+async def broadcast():
     data = await request.get_json()
 
     if data and "message" in data:
         message = data["message"]
 
-        seqnum = 1
+        tasks = []
+        async with aiohttp.ClientSession() as session:
+            for destination in destinations:
+                if destination["is_sequencer"]:
+                    url = f"{destination['url']}/sequencer"
+                    payload = {"message": message}
 
-        for destination in destinations:
-            payload = {"message": message, "seqnum": seqnum}
-            async with aiohttp.ClientSession() as session:
-                await session.post(f"{destination['url']}/deliver", json=payload)
+                    tasks.append(session.post(url, json=payload))
 
-        seqnum += 1
+            await asyncio.gather(*tasks)
 
-        return "Sequenciador com sucesso"
-    
-    return "Falha no sequenciador"
+        return "Mensagem enviada com sucesso para os sequenciadores"
 
-@app.route("/deliver", methods=["POST"])
-async def deliver():
-    
-    data = await request.get_json()
-
-    if data and "message" in data and "seqnum" in data:
-        message = data["message"]
-        seqnum = data["seqnum"]
-
-        nextdeliver = 1
-
-        pending_messages = []
-
-        pending_messages.append({
-            "message": message,
-            "seqnum": seqnum
-        })
-
-        while pending_messages:
-            messages_to_remove = []
-
-            for message_info in pending_messages:
-                message = message_info["message"]
-                seqnum = message_info["seqnum"]
-
-                if seqnum == nextdeliver:
-                    received_messages.append({
-                        "message": message
-                    })
-
-                    messages_to_remove.append(message_info)
-
-            for message_info in messages_to_remove:
-                pending_messages.remove(message_info)
-
-            nextdeliver += 1
-
-            await asyncio.sleep(0.1)
-
-    return jsonify({"message": "Mensagem recebida pelo servidor"})
+    return "Erro: mensagem ausente"
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()

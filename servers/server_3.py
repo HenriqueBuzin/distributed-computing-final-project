@@ -12,22 +12,36 @@ load_dotenv()
 # Constrói a lista de destinos a partir das variáveis do arquivo .env
 destinations = []
 
-for i in range(1, 4):
+# Assuming the maximum number of servers is known or can be determined
+max_servers = int(os.getenv("MAX_SERVERS"))
+server=None
+
+for i in range(1, max_servers + 1):
     name = os.getenv(f"SERVER_{i}_NAME")
     url = os.getenv(f"SERVER_{i}_URL")
     is_sequencer = os.getenv(f"SERVER_{i}_IS_SEQUENCER") == "True"
     port = int(os.getenv(f"SERVER_{i}_PORT"))
+    category = os.getenv(f"SERVER_{i}_CATEGORY")
     is_server = False
     
     # Verifica o nome do arquivo para definir is_server=True no servidor correspondente
     if os.path.basename(__file__) == f"server_{i}.py":
         is_server = True
+        server = {
+            "name": name,
+            "url": url,
+            "is_sequencer": is_sequencer,
+            "port": port,
+            "category": category,
+            "is_server": is_server
+        }
     
     destination = {
         "name": name,
         "url": url,
         "is_sequencer": is_sequencer,
         "port": port,
+        "category": category,
         "is_server": is_server
     }
     
@@ -41,7 +55,6 @@ n = len(destinations)
 DELIV = np.zeros(n, dtype=int)
 SENT = np.zeros((n, n), dtype=int)
 
-server = next((d for d in destinations if d["is_server"]), None)
 if not server:
     print("Erro: servidor não encontrado")
     raise Exception("Servidor não encontrado")
@@ -147,9 +160,10 @@ async def sequencer():
         seqnum = 1
 
         for destination in destinations:
-            payload = {"message": message, "seqnum": seqnum}
-            async with aiohttp.ClientSession() as session:
-                await session.post(f"{destination['url']}/deliver", json=payload)
+            if destination["category"] == "SERVER":
+                payload = {"message": message, "seqnum": seqnum}
+                async with aiohttp.ClientSession() as session:
+                    await session.post(f"{destination['url']}/deliver", json=payload)
 
         seqnum += 1
 
