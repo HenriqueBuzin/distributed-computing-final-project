@@ -101,7 +101,8 @@ async def send():
 # Rota para receber mensagens
 @app.route("/receive", methods=["POST", "GET"])
 async def receive():
-    
+    await asyncio.sleep(5 * 60)
+
     if request.method == "GET":
         return jsonify(received_messages)
     
