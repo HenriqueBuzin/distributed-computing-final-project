@@ -61,11 +61,6 @@ def send(data):
     else:
         sender = data.get("sender")
 
-    asyncio.run(_send_async(sender, data))
-
-# Função send propriamente dita
-async def _send_async(sender, data):
-    
     # O sender até aqui é o nome do arquivo
     # Vai pegar o nome do sender pelo nome do arquivo
     sender = get_name_by_filename(sender)
@@ -75,6 +70,11 @@ async def _send_async(sender, data):
     
     # Vai pegar a mensagem
     message = data.get("message")
+
+    asyncio.run(_send_async(sender, destination, message))
+
+# Função send propriamente dita
+async def _send_async(sender, destination, message):
 
     # Aqui o destino é enviado pelo nome dele
     # Vai pegar o índice no nodos pelo nome,caso contrário vai informar não encontrado
@@ -293,6 +293,44 @@ async def _deliver_async(data):
 
     # Retorno de  êxito
     return json.dumps({"message": "Falha ao receber a mensagem"})
+
+# Para não explicitar o assíncrono no servidor, esse método chama _broadcast_async que vai ser o broadcast de forma assíncrona 
+# O calling_XXX vai ser para pegar o nome do arquivo que chamou a função
+# Vai servir como identificador único e persistente do servidor
+def broadcast(message):
+    calling_frame = inspect.currentframe().f_back
+    calling_filename = inspect.getframeinfo(calling_frame).filename
+    calling_filename = os.path.basename(calling_filename)
+    sender = os.path.splitext(calling_filename)[0]
+
+    asyncio.run(_broadcast_async(sender, message))
+
+# Função broadcast propriamente dita
+async def _broadcast_async(sender, message):
+    
+    # Vai pegar as informações do nodo que é o sequenciador, caso contrário vai informar não encontrado
+    sequenciador = next((nodo for nodo in nodos if nodo["is_sequencer"]), None)
+    if sequenciador is None:
+        print("Nenhum sequenciador encontrado.")
+        return None
+
+    # Cria a variável url a partir do sequenciador encontrado
+    url = sequenciador["url"]
+
+    # Gera a mensagem a ser enviada
+    payload = {
+        "sender": sender,
+        "destination": sequenciador["name"],
+        "message": message
+    }
+
+    # Envia de forma que se o servidor não for encontrado, informa o erro
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(url + '/sequencer', json=payload) as response:
+                print(f'Response from {url}: {response.status}')
+        except aiohttp.ClientError as e:
+            print(f'Erro ao conectar com {url}: {str(e)}')
 
 # Retorna as mensagens recebidas
 def get_messages():
