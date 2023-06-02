@@ -9,23 +9,23 @@ nome_arquivo = os.path.basename(__file__)
 port = get_port(nome_arquivo)
 
 @app.route('/send', methods=['POST'])
-async def send_message():
-    await send(request.json)
+def send_message():
+    send(request.json)
     return jsonify({"message": "Mensagem enviada pelo servidor"})
 
 @app.route('/receive', methods=['POST'])
-async def handle_receive():
-    await receive(request.json)
+def handle_receive():
+    receive(request.json)
     return jsonify({"message": "Mensagem recebida pelo servidor"})
 
 @app.route("/sequencer", methods=["POST"])
-async def process_sequencer():
-    await sequencer(request.json)
+def process_sequencer():
+    sequencer(request.json)
     return jsonify({"message": "Mensagem recebida pelo servidor"})
 
 @app.route('/messages', methods=['GET'])
-async def messages():
-    return await get_messages()
+def messages():
+    return get_messages()
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

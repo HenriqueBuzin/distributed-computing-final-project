@@ -27,7 +27,8 @@ SENT = np.zeros((n, n), dtype=int)
 
 received_messages = []
 
-async def send(data):
+def send(data):
+
     if 'sender' not in data:
         calling_frame = inspect.currentframe().f_back
         calling_filename = inspect.getframeinfo(calling_frame).filename
@@ -38,6 +39,10 @@ async def send(data):
             return None
     else:
         sender = data.get("sender")
+
+    asyncio.run(_send_async(sender, data))
+
+async def _send_async(sender, data):
     
     sender = get_name_by_filename(sender)
     destination = data.get("destination")
@@ -67,7 +72,15 @@ async def send(data):
         except aiohttp.ClientError as e:
             print(f'Error connecting to {url}: {str(e)}')
 
-async def receive(data):
+def receive(data):
+
+    calling_frame = inspect.currentframe().f_back
+    calling_filename = inspect.getframeinfo(calling_frame).filename
+    calling_filename = os.path.basename(calling_filename)
+
+    asyncio.run(_receive_async(calling_filename, data))
+
+async def _receive_async(calling_filename, data):
 
     sender = data.get("sender")    
     destination = data.get("destination")
@@ -80,9 +93,7 @@ async def receive(data):
             break
 
     if not sender_found:
-        calling_frame = inspect.currentframe().f_back
-        calling_filename = inspect.getframeinfo(calling_frame).filename
-        sender = os.path.basename(calling_filename)
+        sender = calling_filename
 
         for nodo in nodos:
             payload = {"sender": sender, "destination": nodo["name"], "message": message}
@@ -115,7 +126,10 @@ async def receive(data):
 
             await asyncio.sleep(0.1)
 
-async def sequencer(data):
+def sequencer(data):
+    asyncio.run(_sequencer_async(data))
+
+async def _sequencer_async(data):
 
     if data and "message" in data:
         message = data["message"]
@@ -137,7 +151,10 @@ async def sequencer(data):
     
     return "Falha no sequenciador"
 
-async def deliver(data):
+def deliver(data):
+    asyncio.run(_deliver_async(data))
+
+async def _deliver_async(data):
 
     if data and "message" in data and "seqnum" in data:
         message = data["message"]
@@ -175,7 +192,7 @@ async def deliver(data):
 
     return json.dumps({"message": "Mensagem recebida pelo servidor"})
 
-async def get_messages():
+def get_messages():
     return json.dumps(received_messages)
 
 def get_port(filename):

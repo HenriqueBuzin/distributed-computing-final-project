@@ -1,12 +1,8 @@
-import asyncio
 from messaging import send, broadcast
 
-async def main():
-    destination = "1"
-    message = "Olá, mundo!"
+destination = "1"
+message = "Olá, mundo!"
 
-    await send(destination, message)
-    
-    await broadcast(message)
+send(destination, message)
 
-asyncio.run(main())
+# broadcast(message)
