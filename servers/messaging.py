@@ -106,6 +106,9 @@ async def _send_async(sender, data):
         except aiohttp.ClientError as e:
             print(f'Error connecting to {url}: {str(e)}')
 
+# Para não explicitar o assíncrono no servidor, esse método chama _receive_async que vai ser o send de forma assíncrona 
+# Quando um cliente envia uma mensagem para um servidor, é o receive que recebe
+# Nesse caso o calling_XXX vai ser para pegar o nome do arquivo que chamou a função 
 def receive(data):
     calling_frame = inspect.currentframe().f_back
     calling_filename = inspect.getframeinfo(calling_frame).filename
@@ -113,19 +116,35 @@ def receive(data):
 
     asyncio.run(_receive_async(calling_filename, data))
 
+# Função send propriamente dita
 async def _receive_async(calling_filename, data):
+
+    # Atribui a variável sender o sender da requisição
     sender = data.get("sender")
+
+    # Atribui a variável message o message da requisição
     message = data.get("message")
     
+    # Quando o cliente envia a mensagem, envia com o sender como client_1, por exemplo
+    # Aqui ele vai procurar se tem algum algum servidor com o nome do sender
     sender_found = False
     for key, value in env_variables.items():
         if key.startswith("NODO_") and value == sender:
             sender_found = True
             break
 
+    # Ao não encontrar nos nodos um servidor com o nome que veio no sender, significa que veio de um cliente
     if not sender_found:
+
+        # Então agora ele atribui o sender como o servidor que recebeu do cliente
         sender = calling_filename
 
+        # Aqui ele vai chamar a função sender do servidor que recebeu do cliente para cada nodo no .env
+        # Utilizando o sender como agora o servidor que recebeu
+        # Destino como cada nó em .env
+        # A mesma mensagem
+        # Isso vai fazer com que o servidor que recebeu a mensagem do cliente
+        # Envie para todos, respeitando a ordem causal
         for nodo in nodos:
             payload = {"sender": sender, "destination": nodo["name"], "message": message}
             url = get_url_by_filename(sender)
@@ -137,37 +156,65 @@ async def _receive_async(calling_filename, data):
                 except aiohttp.ClientError as e:
                     print(f"Error connecting to {url}: {str(e)}")
 
+    # Agora se encontrou, quer dizer que foi enviada por um servidor
     else:
 
+        # Atribui a variável destination o destination da requisição
         destination = data.get("destination")
+    
+        # Reconstroi o stm da requisição
+        # Atribui a variável stm o stm da requisição
         stm = np.array(data.get("stm"))
 
+        # Um loop eterno que fica executando até a condição ser satisfeita
         while True:
+
+            # Aqui ele vai comparar para verificar a ordem causal
+            # Vai pegar o primeiro elemento do deliv e comparar com o primeiro do stm
+            # E assim consecutivamente, se um deles não satisfazerm já retorna falso
             if np.all(DELIV >= stm):
+
+                # Se atendeu a ordem causal, é adicionado nas mensagens recebidas
                 received_messages.append({
                     "sender":sender,
                     "message": message
                 })
                 
+                # Pega o index do sender
                 sender_index = get_index_by_name(sender)
+                
+                # Pega o index do destination
                 destination_index = get_index_by_name(destination)
 
+                # Atualiza a matriz DELIV
                 DELIV[sender_index] += 1
+                
+                # Atualiza a matriz SENT
                 SENT[sender_index, destination_index] += 1
 
+                # Retorna para sair do loop
                 return "Mensagem recebida pelo servidor"
 
+            # Aguarda um tempo para verificar novamente
             await asyncio.sleep(0.1)
 
+# Para não explicitar o assíncrono no servidor, esse método chama _sequencer_async que vai ser o sequencer de forma assíncrona 
 def sequencer(data):
     asyncio.run(_sequencer_async(data))
 
+# Função sequencer propriamente dita
 async def _sequencer_async(data):
+    
+    # Verifica se tem a mensagem, se não retorna uma mensagem de erro
     if data and "message" in data:
+
+        # Atribui a variável message a message recebida
         message = data["message"]
 
+        # Cria o seqnum, igual em defago
         seqnum = 1
 
+        # Ele envia a mensagem para todos os nodos na rota deliver
         for nodo in nodos:
             payload = {"message": message, "seqnum": seqnum}
             async with aiohttp.ClientSession() as session:
@@ -177,55 +224,81 @@ async def _sequencer_async(data):
                 except aiohttp.ClientError as e:
                     print(f"Error connecting to {url}: {str(e)}")
 
+        # Aumento o seqnum, igual em defago
         seqnum += 1
 
+        # Retorno de êxito
         return "Sequenciador com sucesso"
     
     return "Falha no sequenciador"
 
+# Para não explicitar o assíncrono no servidor, esse método chama _deliver_async que vai ser o deliver de forma assíncrona 
 def deliver(data):
     asyncio.run(_deliver_async(data))
 
+# Deliver propriamente dito
 async def _deliver_async(data):
+
+    # Verifica se tem a mensagem e o seqnum na mensagem, se não retorna mensagem de erro
     if data and "message" in data and "seqnum" in data:
+        
+        # Atribui a variável message a message recebida
         message = data["message"]
+        
+        # Atribui a variável seqnum a seqnum recebida
         seqnum = data["seqnum"]
 
+        # Inicia o nextdeliver como defago
         nextdeliver = 1
 
+        # Guarda as mensagens pendentes
         pending_messages = []
 
+        # Adiciona a mensagem pendende e o seqnum as mensagens pendentrs
         pending_messages.append({
             "message": message,
             "seqnum": seqnum
         })
 
+        # Loop enquanto existir mensagens em mensagens pendentes
         while pending_messages:
+
+            # Armazena as mensagens para remover de mensagens pendentes
             messages_to_remove = []
 
+            # Para cada mensagem pendente pega a mensagem e o seqnum
             for message_info in pending_messages:
                 message = message_info["message"]
                 seqnum = message_info["seqnum"]
 
+                # Verifica se o seqnum é igual ao nextdeliver
+                # Se for adiciona em mensagens recebidas
                 if seqnum == nextdeliver:
                     received_messages.append({
                         "message": message
                     })
 
+                    # Adiciona em mensagens a remover de mensagens pendentes
                     messages_to_remove.append(message_info)
 
+            # Remove as mensagens pendentes marcadas para serem removida
             for message_info in messages_to_remove:
                 pending_messages.remove(message_info)
 
+            # Atualiza o nextdeliver
             nextdeliver += 1
 
+            # Em caso que não satisfaça, aguarde para tentar novamente
             await asyncio.sleep(0.1)
 
+    # Retorno de  êxito
     return json.dumps({"message": "Mensagem recebida pelo servidor"})
 
+# Retorna as mensagens recebidas
 def get_messages():
     return json.dumps(received_messages)
 
+# Retorna a porta do nodo pelo nome do arquivo
 def get_port_by_filename(filename):
     numero = filename.split("_")[1].split(".")[0]
     chave_porta = f"NODO_{numero}_PORT"
@@ -234,18 +307,21 @@ def get_port_by_filename(filename):
         return porta
     return None
 
+# Retorna o índice do nodo em nodos pelo nome do nodo
 def get_index_by_name(name):
     for index, nodo in enumerate(nodos):
         if nodo['name'] == name:
             return index
     return None
 
+# Retorna o nome pelo nome do arquivo
 def get_name_by_filename(filename):
     for key, value in env_variables.items():
         if key == f"NODO_{filename.split('_')[1].split('.')[0]}_NAME":
             return value
     return None
 
+# Retorna a url pelo nome do arquivo
 def get_url_by_filename(filename):
     server_number = filename.split("_")[1].split(".")[0]
     for nodo in nodos:
