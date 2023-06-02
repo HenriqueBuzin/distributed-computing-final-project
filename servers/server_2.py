@@ -1,6 +1,5 @@
 from messaging import get_port, send, receive, get_messages, sequencer
 from flask import Flask, request, jsonify
-import asyncio
 import os
 
 app = Flask(__name__)
@@ -28,5 +27,4 @@ def messages():
     return get_messages()
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(app.run(port=port))
+    app.run(port=port)

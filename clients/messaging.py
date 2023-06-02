@@ -18,7 +18,6 @@ for key, value in env_variables.items():
         nodos.append({"name": name, "url": url, "is_sequencer": is_sequencer})
 
 def send(destination, message):
-
     calling_frame = inspect.currentframe().f_back
     calling_filename = inspect.getframeinfo(calling_frame).filename
     calling_filename = os.path.basename(calling_filename)
@@ -27,7 +26,6 @@ def send(destination, message):
     asyncio.run(_send_async(sender, destination, message))
 
 async def _send_async(sender, destination, message):
-
     url = next((nodo["url"] for nodo in nodos if nodo["name"] == destination), None)
     if url is None:
         print(f"Destino {destination} não encontrado.")
@@ -47,7 +45,6 @@ async def _send_async(sender, destination, message):
             print(f'Erro ao conectar com {url}: {str(e)}')
 
 def broadcast(message):
-
     calling_frame = inspect.currentframe().f_back
     calling_filename = inspect.getframeinfo(calling_frame).filename
     calling_filename = os.path.basename(calling_filename)
@@ -56,7 +53,6 @@ def broadcast(message):
     asyncio.run(_broadcast_async(sender, message))
 
 async def _broadcast_async(sender, message):
-    
     sequenciador = next((nodo for nodo in nodos if nodo["is_sequencer"]), None)
     if sequenciador is None:
         print("Nenhum sequenciador encontrado.")
