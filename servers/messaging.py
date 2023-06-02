@@ -1,3 +1,4 @@
+# Importa as bibliotecas necessárias
 from dotenv import dotenv_values
 import numpy as np
 import asyncio
@@ -6,8 +7,16 @@ import inspect
 import json
 import os
 
+# Lê o .env
 env_variables = dotenv_values()
 
+# Gera os nodos a partir do .env
+# Formato:
+# [
+#   {'name': '1', 'url': 'http://localhost:8001', 'is_sequencer': 'True'}, 
+#   {'name': '2', 'url': 'http://localhost:8002', 'is_sequencer': 'False'}, 
+#   {'name': '3', 'url': 'http://localhost:8003', 'is_sequencer': 'False'}
+# ]
 nodos = []
 
 for key, value in env_variables.items():
@@ -21,12 +30,25 @@ for key, value in env_variables.items():
         if not any(nodo["name"] == name for nodo in nodos):
             nodos.append({"name": name, "url": url, "is_sequencer": is_sequencer})
 
+# Pega o tamanho dos nodos, no caso 3
 n = len(nodos)
+
+# Cria o array de DELIV do raynal
 DELIV = np.zeros(n, dtype=int)
+
+# Cria a matriz sent do raynal
 SENT = np.zeros((n, n), dtype=int)
 
+# Armazena o log
 received_messages = []
 
+# Para não explicitar o assíncrono no servidor, esse método chama _send_async que vai ser o send de forma assíncrona 
+# Vai verificar se no envio tem o sender
+# Se não tiver, quer dizer que é de servidor para servidor
+# Nesse caso o calling_XXX vai ser para pegar o nome do arquivo que chamou a função
+# E vai servir como identificador único e persistente do servidor
+# Já se tiver o sender, vai ser quando o cliente envia
+# E define o sender pelo que foi enviado
 def send(data):
     if 'sender' not in data:
         calling_frame = inspect.currentframe().f_back
@@ -41,19 +63,31 @@ def send(data):
 
     asyncio.run(_send_async(sender, data))
 
+# Função send propriamente dita
 async def _send_async(sender, data):
+    
+    # O sender até aqui é o nome do arquivo
+    # Vai pegar o nome do sender pelo nome do arquivo
     sender = get_name_by_filename(sender)
+
+    # Vai pegar o destinatário
     destination = data.get("destination")
+    
+    # Vai pegar a mensagem
     message = data.get("message")
 
+    # Aqui o destino é enviado pelo nome dele
+    # Vai pegar o índice no nodos pelo nome,caso contrário vai informar não encontrado
     destination_index = get_index_by_name(destination)
 
     if destination_index is None:
         print(f"Destino {destination} não encontrado.")
         return None
 
+    # Copia a matriz SENT na linha do índice do destino
     STM = SENT[destination_index].copy()
 
+    # Gera a mensagem a ser enviada
     payload = {
         "sender": sender,
         "message": message,
@@ -61,8 +95,10 @@ async def _send_async(sender, data):
         "stm": STM.tolist()
     }
 
+    # Pega a url para qual vai ser enviada a mensagem
     url = nodos[destination_index]["url"]
-    print(payload)
+    
+    # Envia de forma que se o servidor não for encontrado, informa o erro
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(url + '/receive', json=payload) as response:
@@ -78,8 +114,7 @@ def receive(data):
     asyncio.run(_receive_async(calling_filename, data))
 
 async def _receive_async(calling_filename, data):
-    sender = data.get("sender")    
-    destination = data.get("destination")
+    sender = data.get("sender")
     message = data.get("message")
     
     sender_found = False
@@ -103,8 +138,10 @@ async def _receive_async(calling_filename, data):
                     print(f"Error connecting to {url}: {str(e)}")
 
     else:
-        
+
+        destination = data.get("destination")
         stm = np.array(data.get("stm"))
+
         while True:
             if np.all(DELIV >= stm):
                 received_messages.append({
@@ -189,7 +226,7 @@ async def _deliver_async(data):
 def get_messages():
     return json.dumps(received_messages)
 
-def get_port(filename):
+def get_port_by_filename(filename):
     numero = filename.split("_")[1].split(".")[0]
     chave_porta = f"NODO_{numero}_PORT"
     porta = env_variables.get(chave_porta)
