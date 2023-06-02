@@ -193,7 +193,7 @@ async def _receive_async(calling_filename, data):
                 SENT[sender_index, destination_index] += 1
 
                 # Retorna para sair do loop
-                return "Mensagem recebida pelo servidor"
+                return json.dumps({"message": "Mensagem recebida pelo servidor"})
 
             # Aguarda um tempo para verificar novamente
             await asyncio.sleep(0.1)
@@ -219,7 +219,7 @@ async def _sequencer_async(data):
             payload = {"message": message, "seqnum": seqnum}
             async with aiohttp.ClientSession() as session:
                 try:
-                    async with session.post(url + '/deliver', json=payload) as response:
+                    async with session.post(nodo['url'] + '/deliver', json=payload) as response:
                         print(f"Response from {url}: {response.status}")
                 except aiohttp.ClientError as e:
                     print(f"Error connecting to {url}: {str(e)}")
@@ -228,9 +228,9 @@ async def _sequencer_async(data):
         seqnum += 1
 
         # Retorno de êxito
-        return "Sequenciador com sucesso"
+        return json.dumps({"message": "Sequenciador com sucesso"})
     
-    return "Falha no sequenciador"
+    return json.dumps({"message": "Falha no sequenciador"})
 
 # Para não explicitar o assíncrono no servidor, esse método chama _deliver_async que vai ser o deliver de forma assíncrona 
 def deliver(data):
@@ -292,7 +292,7 @@ async def _deliver_async(data):
             await asyncio.sleep(0.1)
 
     # Retorno de  êxito
-    return json.dumps({"message": "Mensagem recebida pelo servidor"})
+    return json.dumps({"message": "Falha ao receber a mensagem"})
 
 # Retorna as mensagens recebidas
 def get_messages():

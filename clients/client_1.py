@@ -8,7 +8,7 @@ destination = "1"
 message = "Olá, mundo!"
 
 # Chama o método send(destino, mensagem)
-#send(destination, message)
+send(destination, message)
 
 # Chama o broadcast(mensagem)
 broadcast(message)

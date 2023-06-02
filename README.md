@@ -1,31 +1,11 @@
 # distributed-computing-final-project
  Distributed Computing Final Project
 
-## Enviar
-Método: POST <br />
-URL: http://localhost:8001/send <br />
-JSON:
-{
-  "destination": "server-2",
-  "message": "Olá, servidor 2!"
-}
+## Aplicação
+Servidor de log que recebe mensagens em forma de broadcast ou send, e registra se recebeu ou se deve erro ao enviar, e as persiste
 
-## Receber
-Método: GET <br />
-URL: http://localhost:8002/receive <br />
-JSON:
-[
-    {
-        "server-1": "Olá, servidor 2!"
-    }
-]
+## Iniciar os servidores
+python server_1.py
 
-## Broadcast
-Método: POST <br />
-URL: http://localhost:8001/broadcast <br />
-JSON:
-[
-    {
-        "message": "Olá, servidores!"
-    }
-]
+## Para enviar a mensagem do cliente
+python cliente_1.py
