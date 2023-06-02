@@ -5,7 +5,7 @@ from messaging import send, broadcast
 destination = "1"
 
 # Define a mensagem
-message = "Olá, mundo!"
+message = "Olá, mundo3!"
 
 # Chama o método send(destino, mensagem)
 send(destination, message)

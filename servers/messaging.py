@@ -39,7 +39,7 @@ DELIV = np.zeros(n, dtype=int)
 # Cria a matriz sent do raynal
 SENT = np.zeros((n, n), dtype=int)
 
-# Armazena o log
+# Armazena as mensagens recebidas
 received_messages = []
 
 # Para não explicitar o assíncrono no servidor, esse método chama _send_async que vai ser o send de forma assíncrona 
@@ -105,6 +105,7 @@ async def _send_async(sender, destination, message):
                 print(f'Response from {url}: {response.status}')
         except aiohttp.ClientError as e:
             print(f'Error connecting to {url}: {str(e)}')
+
 
 # Para não explicitar o assíncrono no servidor, esse método chama _receive_async que vai ser o send de forma assíncrona 
 # Quando um cliente envia uma mensagem para um servidor, é o receive que recebe
@@ -207,7 +208,7 @@ async def _sequencer_async(data):
     
     # Verifica se tem a mensagem, se não retorna uma mensagem de erro
     if data and "message" in data:
-
+        
         # Atribui a variável message a message recebida
         message = data["message"]
 
@@ -217,6 +218,7 @@ async def _sequencer_async(data):
         # Ele envia a mensagem para todos os nodos na rota deliver
         for nodo in nodos:
             payload = {"message": message, "seqnum": seqnum}
+            
             async with aiohttp.ClientSession() as session:
                 try:
                     async with session.post(nodo['url'] + '/deliver', json=payload) as response:

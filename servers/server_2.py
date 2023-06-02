@@ -1,5 +1,5 @@
 # Importa as bibliotecas necessárias
-from messaging import get_port_by_filename, send, receive, get_messages, sequencer, broadcast
+from messaging import get_port_by_filename, send, receive, get_messages, sequencer, broadcast, deliver
 from flask import Flask, request, jsonify
 import os
 
@@ -36,6 +36,14 @@ def process_sequencer():
     sequencer(request.json)
     return jsonify({"message": "Mensagem recebida pelo servidor"})
 
+# Rota /deliver do servidor no método POST
+# Vai pegar as informações passadas e enviar para o deliver da bibilioteca
+# E retornar uma mensagem de confirmação
+@app.route("/deliver", methods=["POST"])
+def process_deliver():
+    deliver(request.json)
+    return jsonify({"message": "Mensagem recebida pelo servidor"})
+
 # Função chamda no browser para comunicação entre servidores
 @app.route('/send/<destination>/<message>', methods=['GET'])
 def send_message_to_server(destination, message):
@@ -45,7 +53,7 @@ def send_message_to_server(destination, message):
 # Função chamda no browser para comunicação para todos os servidores
 @app.route('/broadcast/<message>', methods=['GET'])
 def send_broadcast_to_servers(message):
-    broadcast({"message": message})
+    broadcast(message)
     return jsonify({"message": "Mensagem enviada com sucesso para os servidores."})
 
 # Rota /messages do servidor no método GET
