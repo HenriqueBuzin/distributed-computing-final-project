@@ -44,10 +44,6 @@ async def send(data):
     message = data.get("message")
 
     destination_index = get_index_by_name(destination)
-    print("XXX")
-    print(destination_index)
-    print("XXX")
-
 
     if destination_index is None:
         print(f"Destino {destination} não encontrado.")
@@ -118,6 +114,66 @@ async def receive(data):
                 return "Mensagem recebida pelo servidor"
 
             await asyncio.sleep(0.1)
+
+async def sequencer(data):
+
+    if data and "message" in data:
+        message = data["message"]
+
+        seqnum = 1
+
+        for nodo in nodos:
+            payload = {"message": message, "seqnum": seqnum}
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.post(url + '/deliver', json=payload) as response:
+                        print(f"Response from {url}: {response.status}")
+                except aiohttp.ClientError as e:
+                    print(f"Error connecting to {url}: {str(e)}")
+
+        seqnum += 1
+
+        return "Sequenciador com sucesso"
+    
+    return "Falha no sequenciador"
+
+async def deliver(data):
+
+    if data and "message" in data and "seqnum" in data:
+        message = data["message"]
+        seqnum = data["seqnum"]
+
+        nextdeliver = 1
+
+        pending_messages = []
+
+        pending_messages.append({
+            "message": message,
+            "seqnum": seqnum
+        })
+
+        while pending_messages:
+            messages_to_remove = []
+
+            for message_info in pending_messages:
+                message = message_info["message"]
+                seqnum = message_info["seqnum"]
+
+                if seqnum == nextdeliver:
+                    received_messages.append({
+                        "message": message
+                    })
+
+                    messages_to_remove.append(message_info)
+
+            for message_info in messages_to_remove:
+                pending_messages.remove(message_info)
+
+            nextdeliver += 1
+
+            await asyncio.sleep(0.1)
+
+    return json.dumps({"message": "Mensagem recebida pelo servidor"})
 
 async def get_messages():
     return json.dumps(received_messages)

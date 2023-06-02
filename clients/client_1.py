@@ -7,5 +7,6 @@ async def main():
 
     await send(destination, message)
     
-    # await broadcast(message)
+    await broadcast(message)
+
 asyncio.run(main())

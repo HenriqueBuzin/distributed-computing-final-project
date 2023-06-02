@@ -42,9 +42,27 @@ async def send(destination, message):
             print(f'Erro ao conectar com {url}: {str(e)}')
 
 async def broadcast(message):
+    calling_frame = inspect.currentframe().f_back
+    calling_filename = inspect.getframeinfo(calling_frame).filename
+    calling_filename = os.path.basename(calling_filename)
+    calling_filename = os.path.splitext(calling_filename)[0]
+
     sequenciador = next((nodo for nodo in nodos if nodo["is_sequencer"]), None)
     if sequenciador is None:
         print("Nenhum sequenciador encontrado.")
         return None
 
-    await send(sequenciador["name"], message)
+    url = sequenciador["url"]
+
+    payload = {
+        "sender": calling_filename,
+        "destination": sequenciador["name"],
+        "message": message
+    }
+
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(url + '/sequencer', json=payload) as response:
+                print(f'Response from {url}: {response.status}')
+        except aiohttp.ClientError as e:
+            print(f'Erro ao conectar com {url}: {str(e)}')

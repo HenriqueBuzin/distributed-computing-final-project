@@ -1,5 +1,6 @@
-from messaging import get_port
-from flask import Flask
+from messaging import get_port, send, receive, get_messages, sequencer
+from flask import Flask, request, jsonify
+import asyncio
 import os
 
 app = Flask(__name__)
@@ -7,13 +8,25 @@ app = Flask(__name__)
 nome_arquivo = os.path.basename(__file__)
 port = get_port(nome_arquivo)
 
-@app.route('/')
-def index():
-    return 'Página inicial'
+@app.route('/send', methods=['POST'])
+async def send_message():
+    await send(request.json)
+    return jsonify({"message": "Mensagem enviada pelo servidor"})
 
-@app.route('/about')
-def about():
-    return 'Sobre nós'
+@app.route('/receive', methods=['POST'])
+async def handle_receive():
+    await receive(request.json)
+    return jsonify({"message": "Mensagem recebida pelo servidor"})
+
+@app.route("/sequencer", methods=["POST"])
+async def process_sequencer():
+    await sequencer(request.json)
+    return jsonify({"message": "Mensagem recebida pelo servidor"})
+
+@app.route('/messages', methods=['GET'])
+async def messages():
+    return await get_messages()
 
 if __name__ == '__main__':
-    app.run(port=port)
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(app.run(port=port))

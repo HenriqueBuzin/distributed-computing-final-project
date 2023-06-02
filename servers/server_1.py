@@ -1,4 +1,4 @@
-from messaging import get_port, send, receive, get_messages
+from messaging import get_port, send, receive, get_messages, sequencer
 from flask import Flask, request, jsonify
 import asyncio
 import os
@@ -16,6 +16,11 @@ async def send_message():
 @app.route('/receive', methods=['POST'])
 async def handle_receive():
     await receive(request.json)
+    return jsonify({"message": "Mensagem recebida pelo servidor"})
+
+@app.route("/sequencer", methods=["POST"])
+async def process_sequencer():
+    await sequencer(request.json)
     return jsonify({"message": "Mensagem recebida pelo servidor"})
 
 @app.route('/messages', methods=['GET'])
