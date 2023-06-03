@@ -1,3 +1,3 @@
 logs/
-server/__pycache__/
+servers/__pycache__/
 clients/__pycache__/
