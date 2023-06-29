@@ -1,0 +1,20 @@
+{
+    "nodes": [
+      {
+        "name": "node-1",
+        "port": 8000,
+        "is_sequencer": false
+      },
+      {
+        "name": "node-2",
+        "port": 8001,
+        "is_sequencer": true
+      },
+      {
+        "name": "node-3",
+        "port": 8002,
+        "is_sequencer": false
+      }
+    ]
+}
+ 
