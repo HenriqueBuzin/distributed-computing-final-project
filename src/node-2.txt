@@ -1,2 +1,0 @@
-Mensagem recebida: Remetente: node-1, Destinatário: node-2, Mensagem: mensagem 1
-Mensagem recebida: Remetente: node-1, Mensagem: Oi!
