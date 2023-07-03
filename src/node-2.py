@@ -1,7 +1,12 @@
-from p2p import p2p_start, send, broadcast
+from p2p import p2p_start, send, broadcast, receive, deliver
+import time
 
 p2p_start('node-2', 2)
 
-send('mensagem 1', 'node-1')
+#send('node-1', 'mensagem 1')
 
-#broadcast('oi')
+time.sleep(60)
+
+print(receive())
+
+print(deliver())

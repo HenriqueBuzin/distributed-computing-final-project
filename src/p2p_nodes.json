@@ -3,17 +3,20 @@
       {
         "name": "node-1",
         "port": 8000,
-        "is_sequencer": false
+        "is_sequencer": false,
+        "is_server": false
       },
       {
         "name": "node-2",
         "port": 8001,
-        "is_sequencer": true
+        "is_sequencer": true,
+        "is_server": true
       },
       {
         "name": "node-3",
         "port": 8002,
-        "is_sequencer": false
+        "is_sequencer": false,
+        "is_server": true
       }
     ]
 }

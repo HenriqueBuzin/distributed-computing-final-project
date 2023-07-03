@@ -9,12 +9,25 @@ app = Flask(__name__)
 
 DB_FILE = "p2p_nodes.json"
 
+received_sent_messages = []
+
+received_broadcast_messages = []
+
 def load_db():
     try:
         with open(DB_FILE, "r") as f:
             return json.load(f)
     except FileNotFoundError:
         return {}
+
+def get_node_count():
+    data = load_db()
+    nodes = data["nodes"]
+    return len(nodes)
+
+n =  get_node_count()
+DELIV = np.zeros(n, dtype=int)
+SENT = np.zeros((n, n), dtype=int)
 
 def get_port_by_name(node_name):
     data = load_db()
@@ -33,7 +46,7 @@ def get_index_by_name(node_name):
     return None
 
 def start_flask(port):
-    app.run(host='localhost', port=port, debug=False, use_reloader=False)
+    app.run(host='localhost', port=port)
 
 def p2p_start(node_name, is_replication=None):
     global node
@@ -43,22 +56,49 @@ def p2p_start(node_name, is_replication=None):
     port = get_port_by_name(node_name)
     threading.Thread(target=start_flask, kwargs={'port': port}).start() 
 
-def get_node_count():
-    data = load_db()
-    nodes = data["nodes"]
-    return len(nodes)
+def get_server_nodes():
+    nodes = load_db()["nodes"]
+    server_nodes = []
+    for node in nodes:
+        if node.get("is_server"):
+            server_nodes.append(node)
+    return server_nodes
 
-n = get_node_count()
-DELIV = np.zeros(n, dtype=int)
-SENT = np.zeros((n, n), dtype=int)
-
-def send(message, destination):
+def send(destination, message):
     if replication == 1:
-        broadcast(message)
+        asyncio.run(_broadcast_servers_async(node, message))
     else:
         asyncio.run(_send_async(node, destination, message))
 
-async def _send_async(sender, destination, message):
+def broadcast_servers(sender, message):
+    asyncio.run(_broadcast_servers_async(node, message))
+
+async def _broadcast_servers_async(sender, message):
+        
+    seqnum = 1
+
+    nodos = get_server_nodes()
+
+    for nodo in nodos:
+        if nodo["name"] != sender:
+            payload = {
+                "sender": sender,
+                "message": message,
+                "seqnum": seqnum
+            }
+
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.post(f"http://localhost:{nodo['port']}/deliver_messages", json=payload) as response:
+                        print(f"Response from {nodo['name']}: {response.status}")
+                except aiohttp.ClientError as e:
+                    print(f"Error connecting to {nodo['name']}: {str(e)}")
+
+    seqnum += 1
+
+    return json.dumps({"message": "Sequenciador com sucesso"})
+
+async def _send_async(sender, destination, message, sd=None):
 
     sender_index = get_index_by_name(sender)
     destination_index = get_index_by_name(destination)
@@ -73,6 +113,7 @@ async def _send_async(sender, destination, message):
         "sender": sender,
         "message": message,
         "destination": destination,
+        "sd": sd,
         "stm": STM.tolist()
     }
 
@@ -80,22 +121,25 @@ async def _send_async(sender, destination, message):
     
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(f"http://localhost:{destination_port}/receive", json=payload) as response:
+            async with session.post(f"http://localhost:{destination_port}/receive_messages", json=payload) as response:
                 print(f"Response from {destination}: {response.status}")
         except aiohttp.ClientError as e:
             print(f"Error connecting to {destination}: {str(e)}")
 
     SENT[destination_index, sender_index] += 1
 
-@app.route('/receive', methods=['POST'])
-def receive():
-    asyncio.run(_receive_async(request.json))
+@app.route('/receive_messages', methods=['POST'])
+def receive_messages():
+    if replication == 2:
+        asyncio.run(receive_and_send(request.json))
+    else:
+        asyncio.run(_receive_async(request.json))
     return json.dumps({"message": "Recebendo mensagem..."})
-
-received_messages = []
 
 async def _receive_async(data):
 
+    
+    
     sender = data.get("sender")
     message = data.get("message")
     destination = data.get("destination")
@@ -105,15 +149,14 @@ async def _receive_async(data):
 
         if np.all(DELIV >= stm):
 
-            received_messages.append({
+            received_sent_messages.append({
                 "sender":sender,
                 "message": message,
-                "destination": destination,
-                "stm": stm
+                "destination": destination
             })
 
-            if(node == destination):
-                print(f"Mensagem recebida: Remetente: {sender}, Mensagem: {message}, STM: {stm}")
+            # if(node == destination):
+                # print(f"Mensagem recebida: Remetente: {sender}, Mensagem: {message}, STM: {stm}")
             
             sender_index = get_index_by_name(sender)
             
@@ -134,6 +177,7 @@ def get_nodes():
 @app.route('/sequencer', methods=['POST'])
 def sequencer():
     asyncio.run(_sequencer_async(request.json))
+    return json.dumps({"message": "Recebendo mensagem..."})
 
 async def _sequencer_async(data):
 
@@ -154,7 +198,7 @@ async def _sequencer_async(data):
 
             async with aiohttp.ClientSession() as session:
                 try:
-                    async with session.post(f"http://localhost:{nodo['port']}/deliver", json=payload) as response:
+                    async with session.post(f"http://localhost:{nodo['port']}/deliver_messages", json=payload) as response:
                         print(f"Response from {nodo['name']}: {response.status}")
                 except aiohttp.ClientError as e:
                     print(f"Error connecting to {nodo['name']}: {str(e)}")
@@ -163,8 +207,8 @@ async def _sequencer_async(data):
 
     return json.dumps({"message": "Sequenciador com sucesso"})
 
-@app.route('/deliver', methods=['POST'])
-def deliver():
+@app.route('/deliver_messages', methods=['POST'])
+def deliver_messages():
     asyncio.run(_deliver_async(request.json))
     return json.dumps({"message": "Recebendo mensagem..."})
 
@@ -194,13 +238,13 @@ async def _deliver_async(data):
             seqnum = message_info["seqnum"]
 
             if seqnum == nextdeliver:
-                received_messages.append({
+                received_broadcast_messages.append({
                     "sender": sender,
                     "message": message
                 })
 
-                if(node != sender):
-                    print(f"Mensagem recebida: Remetente: {sender}, Mensagem: {message}")
+                # if(node != sender):
+                    # print(f"Mensagem recebida: Remetente: {sender}, Mensagem: {message}")
 
                 messages_to_remove.append(message_info)
 
@@ -238,3 +282,35 @@ async def _broadcast_async(message, sequencer_name, sequencer_port):
                 print(f'Response from {sequencer_name}: {response.status}')
         except aiohttp.ClientError as e:
             print(f'Erro ao conectar com {sequencer_name}: {str(e)}')
+
+def receive():
+    return received_sent_messages
+
+def deliver():
+    return received_broadcast_messages
+
+async def receive_and_send(data):
+    await _receive_and_send_async(data)
+
+async def _receive_and_send_async(data):
+
+    tasks = []
+
+    receive_task = asyncio.create_task(_receive_async(data))
+    tasks.append(receive_task)
+
+    sender = data.get("sender")
+    destination = data.get("destination")
+    message = data.get("message")
+
+    servers = get_server_nodes()
+
+    if data.get('sd') is None:
+        for server in servers:
+            if server['name'] != sender and server['name'] != destination:
+                send_task = asyncio.create_task(_send_async(sender, server['name'], message, True))
+                tasks.append(send_task)
+
+    await asyncio.gather(*tasks)
+
+    return json.dumps({"message": "Mensagem recebida e enviada para os nós do servidor"})
